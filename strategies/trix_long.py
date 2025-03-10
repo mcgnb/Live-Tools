@@ -148,7 +148,7 @@ PARAMS = {
         },
     },
 }
-RELATIVE_PATH = "live_strategies/trix"
+RELATIVE_PATH = "Live-Tools/strategies/trix"
 
 async def main():
     account = ACCOUNTS[ACCOUNT_NAME]
