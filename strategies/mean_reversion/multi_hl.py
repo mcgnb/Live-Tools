@@ -4,13 +4,16 @@ import datetime
 import pandas as pd
 import ta
 from typing import Dict, Any
+from secret import ACCOUNTS
 
 import sys
 sys.path.append("./Live-Tools")
 
-from secret import ACCOUNTS
+# from secret import ACCOUNTS
 from utils.hl_perp import PerpHyperliquid
 from utils.discord_logger import DiscordLogger
+
+DISCORD_WEBHOOK = ""
 
 # --- Global Strategy Settings ---
 TIMEFRAME = '1h'         
@@ -65,10 +68,10 @@ PARAMS = {
 
 async def main():
     account = ACCOUNTS["multi_mr"]
-    dl = DiscordLogger("")
+    dl = DiscordLogger(DISCORD_WEBHOOK)
     exchange = PerpHyperliquid(
-        public_api=account["public_api"],
-        secret_api=account["secret_api"],
+        public_api=account['public_api'],
+        secret_api=account['secret_api'],
     )
 
     dl.log(f"--- Multi MR | Execution Started at {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
@@ -275,14 +278,5 @@ async def main():
         print(f"Error => {e}")
         raise e
 
-# if __name__ == "__main__":
-#     asyncio.run(main())
-
 if __name__ == "__main__":
-    async def runner():
-        while True:
-            await main()
-            print("Sleeping for an hour...")
-            await asyncio.sleep(3600)
-
-    asyncio.run(runner())
+    asyncio.run(main())
