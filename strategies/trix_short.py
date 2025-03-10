@@ -19,7 +19,7 @@ MARGIN_MODE = "cross" # isolated or cross
 LEVERAGE = 1
 ACCOUNT_NAME = "trix_short"
 SIDE = ["short"]
-DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1346079953644425247/s7_R6aJA8UboZlW6M6634OQcNrwtAPbeQyUtZC7eHyGM4Hv-EHDFhtldYXmK-uaptz2T"
+DISCORD_WEBHOOK = ""
 PARAMS = {
     "1h": {
         "p1": {
@@ -148,7 +148,7 @@ PARAMS = {
         },
     },
 }
-RELATIVE_PATH = "live_strategies/strategies/trix"
+RELATIVE_PATH = "Live-Tools/strategies/trix"
 
 async def main():
     account = ACCOUNTS[ACCOUNT_NAME]
