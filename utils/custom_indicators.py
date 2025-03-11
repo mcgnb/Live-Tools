@@ -404,4 +404,351 @@ class MaSlope():
         """
         return self.df['xangle']
         
-    
+def ichimoku(
+    df,
+    high_col="high",
+    low_col="low",
+    close_col="close",
+    conversion_period=9,
+    base_period=26,
+    span_b_period=52,
+    displacement=26
+):
+    """
+    Calculate Ichimoku Cloud indicator lines and add them to the DataFrame.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame containing 'high', 'low', 'close' columns (by default).
+    high_col : str
+        Column name for the high prices.
+    low_col : str
+        Column name for the low prices.
+    close_col : str
+        Column name for the close prices.
+    conversion_period : int
+        Lookback period for the Conversion Line (Tenkan-sen).
+    base_period : int
+        Lookback period for the Base Line (Kijun-sen).
+    span_b_period : int
+        Lookback period for the Leading Span B (Senkou Span B).
+    displacement : int
+        Number of periods to shift forward for the leading spans.
+
+    Returns
+    -------
+    pd.DataFrame
+        The original DataFrame with the following new columns added:
+        - 'tenkan_sen'
+        - 'kijun_sen'
+        - 'senkou_span_a'
+        - 'senkou_span_b'
+        - 'chikou_span'
+    """
+
+    # Tenkan-sen (Conversion Line)
+    df["tenkan_sen"] = (
+        df[high_col].rolling(window=conversion_period).max() +
+        df[low_col].rolling(window=conversion_period).min()
+    ) / 2.0
+
+    # Kijun-sen (Base Line)
+    df["kijun_sen"] = (
+        df[high_col].rolling(window=base_period).max() +
+        df[low_col].rolling(window=base_period).min()
+    ) / 2.0
+
+    # Senkou Span A (Leading Span A) = (Tenkan-sen + Kijun-sen) / 2, shifted forward
+    df["span_a"] = (
+        (df["tenkan_sen"] + df["kijun_sen"]) / 2
+    ).shift(displacement)
+
+    # Senkou Span B (Leading Span B) = (Highest high + Lowest low) / 2 over span_b_period, shifted forward
+    highest_high_span_b = df[high_col].rolling(window=span_b_period).max()
+    lowest_low_span_b = df[low_col].rolling(window=span_b_period).min()
+    df["span_b"] = ((highest_high_span_b + lowest_low_span_b) / 2).shift(displacement)
+
+    # Chikou Span (Lagging Span) = close shifted backward by displacement
+    df["chikou_span"] = df[close_col]
+
+    return df
+
+def ema(
+    df,
+    close_col="close",
+    period=9,
+    column_name=None
+):
+    """
+    Calculate the Exponential Moving Average (EMA) for a given period and
+    add it as a new column in the DataFrame.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The input DataFrame.
+    close_col : str
+        Column name for the close price data.
+    period : int
+        Lookback period for the EMA.
+    column_name : str, optional
+        Name of the output EMA column. If None, defaults to 'ema_{period}'.
+
+    Returns
+    -------
+    pd.DataFrame
+        Modified DataFrame with the EMA column added.
+    """
+    if column_name is None:
+        column_name = f"ema_{period}"
+
+    df[column_name] = df[close_col].ewm(span=period, adjust=False).mean()
+    return df
+
+def bollinger_bands_width(
+    df,
+    close_col="close",
+    period=20,
+    std_dev=2.0,
+    add_bands=True
+):
+    """
+    Calculate Bollinger Bands (upper, middle, lower) and Bollinger Band Width (bbw).
+    Optionally add all bands to the DataFrame.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The input DataFrame.
+    close_col : str
+        The column name for the close price.
+    period : int
+        Rolling window for the SMA and standard deviation.
+    std_dev : float
+        How many standard deviations away from the middle band.
+    add_bands : bool
+        If True, adds 'bb_upper', 'bb_middle', and 'bb_lower' to the DataFrame.
+
+    Returns
+    -------
+    pd.DataFrame
+        The same DataFrame with a new column 'bbw', and optionally
+        'bb_upper', 'bb_middle', 'bb_lower' if add_bands=True.
+    """
+    # Middle Band (Simple Moving Average)
+    df["bb_middle"] = df[close_col].rolling(window=period).mean()
+
+    # Rolling Standard Deviation
+    df["bb_std"] = df[close_col].rolling(window=period).std()
+
+    # Upper Band
+    df["bb_upper"] = df["bb_middle"] + std_dev * df["bb_std"]
+
+    # Lower Band
+    df["bb_lower"] = df["bb_middle"] - std_dev * df["bb_std"]
+
+    # Bollinger Band Width = (Upper - Lower) / Middle
+    # (Some definitions vary: e.g. (upper - lower)/(2 * middle). Adjust as you prefer.)
+    df["bbw"] = (df["bb_upper"] - df["bb_lower"]) / df["bb_middle"] * 100
+
+    # If you want to keep your DataFrame clean, you can choose to drop intermediate columns,
+    # or skip adding them. We'll keep them for reference here.
+    if not add_bands:
+        df.drop(["bb_upper", "bb_middle", "bb_lower", "bb_std"], axis=1, inplace=True)
+    else:
+        df.drop("bb_std", axis=1, inplace=True)
+
+    return df
+
+def adx(
+    df,
+    high_col="high",
+    low_col="low",
+    close_col="close",
+    period=14,
+    adx_col_name="adx"
+):
+    """
+    Calculate the Average Directional Index (ADX) along with +DI and -DI.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        The DataFrame with columns for high, low, and close.
+    high_col : str
+        Column name for high prices.
+    low_col : str
+        Column name for low prices.
+    close_col : str
+        Column name for close prices.
+    period : int
+        Lookback period for ADX.
+    adx_col_name : str
+        Name for the ADX column in the DataFrame.
+
+    Returns
+    -------
+    pd.DataFrame
+        The DataFrame with new columns:
+            '+di', '-di', 'dx', and the final ADX column (adx_col_name).
+    """
+    # Make a copy so we don't override original columns if you prefer
+    # But we can also work directly in df.
+
+    # 1) Calculate True Range (TR)
+    df["prev_close"] = df[close_col].shift(1)
+    df["high-low"] = df[high_col] - df[low_col]
+    df["high-pclose"] = (df[high_col] - df["prev_close"]).abs()
+    df["low-pclose"] = (df[low_col] - df["prev_close"]).abs()
+
+    df["tr"] = df[["high-low", "high-pclose", "low-pclose"]].max(axis=1)
+
+    # 2) Calculate directional movement +DM, -DM
+    df["up_move"] = df[high_col].diff()
+    df["down_move"] = -df[low_col].diff()
+
+    df["+dm"] = (
+        df["up_move"].where((df["up_move"] > df["down_move"]) & (df["up_move"] > 0), 0)
+    )
+    df["-dm"] = (
+        df["down_move"].where((df["down_move"] > df["up_move"]) & (df["down_move"] > 0), 0)
+    )
+
+    # 3) Wilder's smoothing for TR, +DM, and -DM over 'period' bars
+    # Initialize first value by summing first 'period' values, then do the Wilder smoothing
+    df["tr_smoothed"] = 0.0
+    df["+dm_smoothed"] = 0.0
+    df["-dm_smoothed"] = 0.0
+
+    # We can't do standard .rolling().sum() easily for the Wilder approach, so let's do it in a loop.
+    # If you prefer a simpler approach, just do a rolling sum or ewm. This approach matches many charting tools.
+
+    # First, we need enough rows, so if the DataFrame is shorter than 'period', handle carefully
+    if len(df) < period:
+        # Not enough data to do a full ADX calculation
+        return df
+
+    # Initialize the sums for the first 'period'
+    first_idx = df.index[0]
+    start_idx = df.index[period - 1]  # the index of the row that completes the first window
+
+    # Sum over that initial window
+    df.loc[start_idx, "tr_smoothed"] = df["tr"].iloc[:period].sum()
+    df.loc[start_idx, "+dm_smoothed"] = df["+dm"].iloc[:period].sum()
+    df.loc[start_idx, "-dm_smoothed"] = df["-dm"].iloc[:period].sum()
+
+    # Wilder's smoothing: subsequent bars
+    for i in range(period, len(df)):
+        df.loc[df.index[i], "tr_smoothed"] = (
+            df["tr_smoothed"].iloc[i - 1]
+            - (df["tr_smoothed"].iloc[i - 1] / period)
+            + df["tr"].iloc[i]
+        )
+
+        df.loc[df.index[i], "+dm_smoothed"] = (
+            df["+dm_smoothed"].iloc[i - 1]
+            - (df["+dm_smoothed"].iloc[i - 1] / period)
+            + df["+dm"].iloc[i]
+        )
+
+        df.loc[df.index[i], "-dm_smoothed"] = (
+            df["-dm_smoothed"].iloc[i - 1]
+            - (df["-dm_smoothed"].iloc[i - 1] / period)
+            + df["-dm"].iloc[i]
+        )
+
+    # 4) +DI and -DI
+    df["+di"] = 100 * (df["+dm_smoothed"] / df["tr_smoothed"])
+    df["-di"] = 100 * (df["-dm_smoothed"] / df["tr_smoothed"])
+
+    # 5) DX = |+DI - -DI| / (+DI + -DI) * 100
+    df["dx"] = (
+        (df["+di"] - df["-di"]).abs()
+        / (df["+di"] + df["-di"]).replace(0, float("nan"))  # avoid div by zero
+        * 100
+    )
+
+    # 6) ADX = Wilder's smoothing of DX
+    df[adx_col_name] = 0.0
+    # Initialize first ADX (the row at 'start_idx') as the average of DX in that first period
+    df.loc[start_idx, adx_col_name] = df["dx"].iloc[:period].mean()
+
+    for i in range(period, len(df)):
+        df.loc[df.index[i], adx_col_name] = (
+            (df[adx_col_name].iloc[i - 1] * (period - 1) + df["dx"].iloc[i]) / period
+        )
+
+    # Clean up columns if you want to keep only certain ones
+    # For clarity, let's just keep ADX, +DI, -DI, and drop intermediate columns
+    # COMMENT THIS OUT if you want to debug intermediate steps
+    df.drop(
+        [
+            "prev_close", "high-low", "high-pclose", "low-pclose", "tr",
+            "up_move", "down_move", "+dm", "-dm",
+            "tr_smoothed", "+dm_smoothed", "-dm_smoothed", "dx"
+        ],
+        axis=1, inplace=True
+    )
+
+    return df
+
+def atr(
+    df: pd.DataFrame,
+    high_col: str = "high",
+    low_col: str = "low",
+    close_col: str = "close",
+    period: int = 14,
+    atr_col_name: str = "atr"
+):
+    """
+    Calculate the Average True Range (ATR) and add it as a new column to the DataFrame.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame with columns for high, low, close.
+    high_col, low_col, close_col : str
+        Column names for the 'high', 'low', 'close' prices.
+    period : int
+        The ATR lookback period (default=14).
+    atr_col_name : str
+        The name of the column where ATR values will be stored.
+
+    Returns
+    -------
+    pd.DataFrame
+        The original DataFrame with an additional column for ATR.
+    """
+
+    # True Range (TR)
+    df["previous_close"] = df[close_col].shift(1)
+    df["high-low"] = df[high_col] - df[low_col]
+    df["high-pc"] = (df[high_col] - df["previous_close"]).abs()
+    df["low-pc"] = (df[low_col] - df["previous_close"]).abs()
+
+    df["tr"] = df[["high-low", "high-pc", "low-pc"]].max(axis=1)
+
+    # Wilder's ATR calculation
+    # 1) First ATR value is simple average of first 'period' TR values
+    # 2) Then ATR = [ (previous ATR * (period - 1)) + current TR ] / period
+
+    df[atr_col_name] = np.nan  # initialize the column
+    # If there's not enough data for a full period, just return
+    if len(df) < period:
+        return df
+
+    # The first ATR value
+    first_idx = df.index[period - 1]
+    df.loc[first_idx, atr_col_name] = df["tr"].iloc[:period].mean()
+
+    # Wilder's smoothing for subsequent values
+    for i in range(period, len(df)):
+        prev_atr = df.loc[df.index[i - 1], atr_col_name]
+        curr_tr = df.loc[df.index[i], "tr"]
+        df.loc[df.index[i], atr_col_name] = ((prev_atr * (period - 1)) + curr_tr) / period
+
+    # Clean up intermediate columns if desired
+    df.drop(["previous_close", "high-low", "high-pc", "low-pc", "tr"], axis=1, inplace=True)
+
+    return df
